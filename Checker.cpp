@@ -6,8 +6,12 @@
 #include <stdlib.h>
 #include <string>
 #include <chrono>
+#include <sys/types.h>
+#include <sys/stat.h>
 #ifdef _WIN32
 #include "CheckerLib\CheckerConfigure.h" //for configure
+#include <unistd.h>
+#define stat _stat
 #endif
 #ifdef __linux__
 #include "CheckerLib/CheckerConfigure.h"
@@ -25,22 +29,64 @@ int main() {
 }
 
 inline void Pt(char *S, int T);
-
+bool HasCache(std::string Path)
+{
+    Path.pop_back();
+    struct stat Result;
+    if(stat(Path.data(), &Result) != 0) {
+        exit(-1);
+    }
+    time_t ModifyTime = Result.st_mtime;
+    auto LastCompiledfile = ".lastcompiled." + Path;
+    FILE * fp = fopen(LastCompiledfile.data(), "rb");
+    if(fp == NULL)
+        return false;
+    time_t * LastCompiled;
+    LastCompiled = (time_t *) malloc(sizeof(time_t));
+    fread(LastCompiled, sizeof(time_t), 1, fp);
+    fclose(fp);
+    return *LastCompiled == ModifyTime;
+}
+void SaveCache(std::string Path) {
+    Path.pop_back();
+    struct stat Result;
+    stat(Path.c_str(), &Result);
+    time_t ModifyTime = Result.st_mtime;
+    auto LastCompiledfile = ".lastcompiled." + Path;
+    FILE * fp = fopen(LastCompiledfile.data(), "wb");
+    fwrite(&ModifyTime, sizeof(time_t), 1, fp);
+    fclose(fp);
+}
 int Work1()
 {
     printf("\033[33mCompiling 4 files, it may takes several seconds. Please wait...\033[0m\n");
 
-    Construction = Builder + My + "-o " + MyRunfile + BuilderConfigure;
-    if (!system(Construction.data())) printf("    \033[32mMain.cpp Compiled.\033[0m\n");
-    else return 0, printf("    \033[31mMain.cpp Compile failed.\033[0m\n");
+    if(HasCache(My)){
+        printf("    \033[36mMain.cpp Compile skipped.\033[0m\n");
+    } else {
+        Construction = Builder + My + "-o " + MyRunfile + BuilderConfigure;
+        if (!system(Construction.data())) printf("    \033[32mMain.cpp Compiled.\033[0m\n");
+        else return 0, printf("    \033[31mMain.cpp Compile failed.\033[0m\n");
+        SaveCache(My);
+    }
 
-    Construction = Builder + Std + "-o " + StdRunfile + BuilderConfigure;
-    if (!system(Construction.data())) printf("    \033[32mStd.cpp  Compiled.\033[0m\n");
-    else return 0, printf("    \033[31mStd.cpp  Compile failed.\033[0m\n");
+    if(HasCache(Std)){
+        printf("    \033[36mStd.cpp  Compile skipped.\033[0m\n");
+    } else {
+        Construction = Builder + Std + "-o " + StdRunfile + BuilderConfigure;
+        if (!system(Construction.data())) printf("    \033[32mStd.cpp  Compiled.\033[0m\n");
+        else return 0, printf("    \033[31mStd.cpp  Compile failed.\033[0m\n");
+        SaveCache(Std);
+    }
 
-    Construction = Builder + DataMaker + "-o " + DataMakerRunfile + BuilderConfigure;
-    if (!system(Construction.data())) printf("    \033[32mDmk.cpp  Compiled.\033[0m\n");
-    else return 0, printf("    \033[31mDmk.cpp  Compile failed.\033[0m\n");
+    if(HasCache(DataMaker)){
+        printf("    \033[36mDmk.cpp  Compile skipped.\033[0m\n");
+    } else {
+        Construction = Builder + DataMaker + "-o " + DataMakerRunfile + BuilderConfigure;
+        if (!system(Construction.data())) printf("    \033[32mDmk.cpp  Compiled.\033[0m\n");
+        else return 0, printf("    \033[31mDmk.cpp  Compile failed.\033[0m\n");
+        SaveCache(DataMaker);
+    }
 
     Construction = Builder + Checker + "-o " + CheckerRunfile + BuilderConfigure;
     if (!system(Construction.data())) printf("    \033[32m Judger  Compiled.\033[0m\n");
